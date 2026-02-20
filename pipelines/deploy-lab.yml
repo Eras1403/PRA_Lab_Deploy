@@ -4,28 +4,30 @@ pr: none
 name: deploy-$(Date:yyyyMMdd)$(Rev:.r)
 
 parameters:
-  - name: runId
-    displayName: Run Identifier
-    type: string
-    default: ''
   - name: windows_jump_client_count
     displayName: Number of Windows Jump Clients
     type: number
     default: 1
-  - name: linux_jump_client_count
-    displayName: Number of Linux Jump Clients
+  - name: rhel_9_4_count
+    displayName: Number of RHEL 9.4 Jump Clients
+    type: number
+    default: 0
+  - name: suse_15_count
+    displayName: Number of SUSE 15 Jump Clients
+    type: number
+    default: 0
+  - name: ubuntu_24_04_count
+    displayName: Number of Ubuntu 24.04 Jump Clients
     type: number
     default: 1
-  - name: linux_distro
-    displayName: Linux Distribution
-    type: string
-    default: ubuntu-24.04
-    values:
-      - rhel-9.4
-      - suse-15
-      - ubuntu-24.04
-      - debian-12
-      - fedora-40
+  - name: debian_12_count
+    displayName: Number of Debian 12 Jump Clients
+    type: number
+    default: 0
+  - name: fedora_40_count
+    displayName: Number of Fedora 40 Jump Clients
+    type: number
+    default: 0
 
 variables:
   # Consider moving these variables into a Library Variable Group.
@@ -43,6 +45,8 @@ variables:
     value: 'vnet_sandbox_north'
   - name: keyVaultName
     value: 'kv-pra-lab-deploy'
+  - name: runId
+    value: $(Build.BuildNumber)
 
 stages:
   - stage: GenerateManifest
@@ -62,10 +66,13 @@ stages:
               filePath: 'scripts/pra_api/generate_manifest.ps1'
               pwsh: true
               arguments: >-
-                -RunId "${{ parameters.runId }}"
+                -RunId "$(runId)"
                 -WindowsJumpClientCount ${{ parameters.windows_jump_client_count }}
-                -LinuxJumpClientCount ${{ parameters.linux_jump_client_count }}
-                -LinuxDistro "${{ parameters.linux_distro }}"
+                -RhelCount ${{ parameters.rhel_9_4_count }}
+                -SuseCount ${{ parameters.suse_15_count }}
+                -UbuntuCount ${{ parameters.ubuntu_24_04_count }}
+                -DebianCount ${{ parameters.debian_12_count }}
+                -FedoraCount ${{ parameters.fedora_40_count }}
                 -OutputPath "$(Build.ArtifactStagingDirectory)/manifest.json"
 
           - publish: '$(Build.ArtifactStagingDirectory)/manifest.json'
@@ -121,12 +128,12 @@ stages:
                   -backend-config="resource_group_name=$(tfStateResourceGroup)" \
                   -backend-config="storage_account_name=$(tfStateStorageAccount)" \
                   -backend-config="container_name=$(tfStateContainer)" \
-                  -backend-config="key=windows-${{ parameters.runId }}.tfstate"
+                  -backend-config="key=windows-$(runId).tfstate"
 
-                terraform workspace select "${{ parameters.runId }}" || terraform workspace new "${{ parameters.runId }}"
+                terraform workspace select "$(runId)" || terraform workspace new "$(runId)"
 
                 terraform apply -auto-approve \
-                  -var "run_id=${{ parameters.runId }}" \
+                  -var "run_id=$(runId)" \
                   -var "jump_client_count=${{ parameters.windows_jump_client_count }}" \
                   -var "admin_username=LocalAdmin" \
                   -var "vnet_resource_group=$(vnetResourceGroup)" \
@@ -154,14 +161,14 @@ stages:
                   -backend-config="resource_group_name=$(tfStateResourceGroup)" \
                   -backend-config="storage_account_name=$(tfStateStorageAccount)" \
                   -backend-config="container_name=$(tfStateContainer)" \
-                  -backend-config="key=linux-${{ parameters.runId }}.tfstate"
+                  -backend-config="key=linux-$(runId).tfstate"
 
-                terraform workspace select "${{ parameters.runId }}" || terraform workspace new "${{ parameters.runId }}"
+                terraform workspace select "$(runId)" || terraform workspace new "$(runId)"
 
                 terraform apply -auto-approve \
-                  -var "run_id=${{ parameters.runId }}" \
-                  -var "jump_client_count=${{ parameters.linux_jump_client_count }}" \
-                  -var "linux_distro=${{ parameters.linux_distro }}" \
+                  -var "run_id=$(runId)" \
+                  -var "jump_client_count=$((${{ parameters.rhel_9_4_count }} + ${{ parameters.suse_15_count }} + ${{ parameters.ubuntu_24_04_count }} + ${{ parameters.debian_12_count }} + ${{ parameters.fedora_40_count }}))" \
+                  -var "linux_distro=ubuntu-24.04" \
                   -var "admin_username=LocalAdmin" \
                   -var "vnet_resource_group=$(vnetResourceGroup)" \
                   -var "vnet_name=$(vnetName)"
@@ -185,9 +192,9 @@ stages:
               filePath: 'scripts/pra_api/validate_clients_online.ps1'
               pwsh: true
               arguments: >-
-                -RunId "${{ parameters.runId }}"
+                -RunId "$(runId)"
                 -WindowsJumpClientCount ${{ parameters.windows_jump_client_count }}
-                -LinuxJumpClientCount ${{ parameters.linux_jump_client_count }}
+                -LinuxJumpClientCount ${{ add(add(add(add(parameters.rhel_9_4_count, parameters.suse_15_count), parameters.ubuntu_24_04_count), parameters.debian_12_count), parameters.fedora_40_count) }}
                 -TimeoutMinutes 20
                 -PollSeconds 30
             env:
