@@ -18,6 +18,8 @@ variables:
     value: 'stterraformstate001'
   - name: tfStateContainer
     value: 'tfstate'
+  - name: runId
+    value: ${{ parameters.runId }}
 
 stages:
   - stage: ApiCleanup
@@ -36,7 +38,7 @@ stages:
               filePath: 'scripts/pra_api/cleanup_jump_items.ps1'
               pwsh: true
               arguments: >-
-                -RunId "${{ parameters.runId }}"
+                -RunId "$(runId)"
             env:
               PRA_BASE_URL: $(praBaseUrl)
               PRA_CLIENT_ID: $(praClientId)
@@ -78,13 +80,15 @@ stages:
                   -backend-config="resource_group_name=$(tfStateResourceGroup)" \
                   -backend-config="storage_account_name=$(tfStateStorageAccount)" \
                   -backend-config="container_name=$(tfStateContainer)" \
-                  -backend-config="key=windows-${{ parameters.runId }}.tfstate"
+                  -backend-config="key=windows-$RUN_ID.tfstate"
 
-                terraform workspace select "${{ parameters.runId }}" || terraform workspace new "${{ parameters.runId }}"
+                terraform workspace select "$RUN_ID" || terraform workspace new "$RUN_ID"
 
                 terraform destroy -auto-approve \
-                  -var "run_id=${{ parameters.runId }}" \
+                  -var "run_id=$RUN_ID" \
                   -var "admin_username=LocalAdmin"
+            env:
+              RUN_ID: $(runId)
 
           - task: AzureCLI@2
             displayName: 'Terraform destroy - Linux module'
@@ -106,10 +110,12 @@ stages:
                   -backend-config="resource_group_name=$(tfStateResourceGroup)" \
                   -backend-config="storage_account_name=$(tfStateStorageAccount)" \
                   -backend-config="container_name=$(tfStateContainer)" \
-                  -backend-config="key=linux-${{ parameters.runId }}.tfstate"
+                  -backend-config="key=linux-$RUN_ID.tfstate"
 
-                terraform workspace select "${{ parameters.runId }}" || terraform workspace new "${{ parameters.runId }}"
+                terraform workspace select "$RUN_ID" || terraform workspace new "$RUN_ID"
 
                 terraform destroy -auto-approve \
-                  -var "run_id=${{ parameters.runId }}" \
+                  -var "run_id=$RUN_ID" \
                   -var "admin_username=LocalAdmin"
+            env:
+              RUN_ID: $(runId)

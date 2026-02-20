@@ -135,6 +135,56 @@ function New-PraJumpShortcut {
     Write-Host "[Create] Created $Endpoint '$ShortcutName'"
 }
 
+function Get-ShortcutPort {
+    param(
+        [Parameter(Mandatory = $true)][string]$Protocol
+    )
+
+    switch ($Protocol.ToLowerInvariant()) {
+        'ssh' { return 22 }
+        'rdp' { return 3389 }
+        'vnc' { return 5900 }
+        default { throw "Unsupported protocol '$Protocol'. Supported values: ssh, rdp, vnc." }
+    }
+}
+
+function Get-ShortcutEndpoint {
+    param(
+        [Parameter(Mandatory = $true)][string]$Os,
+        [Parameter(Mandatory = $true)][string]$Protocol
+    )
+
+    $normalizedOs = $Os.ToLowerInvariant()
+    $normalizedProtocol = $Protocol.ToLowerInvariant()
+
+    switch ($normalizedProtocol) {
+        'ssh' {
+            if ($normalizedOs -ne 'linux') {
+                throw "Protocol 'ssh' is only supported for os='linux'. Item os='$Os'."
+            }
+
+            return 'shell-jump'
+        }
+        'rdp' {
+            if ($normalizedOs -ne 'windows') {
+                throw "Protocol 'rdp' is only supported for os='windows'. Item os='$Os'."
+            }
+
+            return 'remote-jump'
+        }
+        'vnc' {
+            if ($normalizedOs -ne 'linux') {
+                throw "Protocol 'vnc' is only supported for os='linux'. Item os='$Os'."
+            }
+
+            return 'remote-jump'
+        }
+        default {
+            throw "Unsupported protocol '$Protocol'. Supported values: ssh, rdp, vnc."
+        }
+    }
+}
+
 if (-not (Test-Path -Path $ManifestPath -PathType Leaf)) {
     throw "Manifest file not found: $ManifestPath"
 }
@@ -169,70 +219,55 @@ if (-not $jumpointManifestItem) {
 }
 $jumpoint = Get-PraSingleObjectByName -BaseUrl $baseUrl -Token $token -ObjectType 'jumpoint' -Name $jumpointManifestItem.name -Attempts $MaxRetries -DelaySeconds $RetryDelaySeconds
 
-$linuxItems = @($manifest.items | Where-Object { $_.os -eq 'linux' -and $_.role -ne 'jumpoint' })
-$windowsItems = @($manifest.items | Where-Object { $_.os -eq 'windows' -and $_.role -ne 'jumpoint' })
+$shortcutCandidates = @($manifest.items | Where-Object { $_.role -ne 'jumpoint' -and $_.create_shortcut -eq $true })
+$createdShellShortcuts = 0
+$createdRemoteShortcuts = 0
 
-foreach ($item in $linuxItems) {
+foreach ($item in $shortcutCandidates) {
     $privateIp = $item.privateIp
     if (-not $privateIp) {
         $privateIp = $item.private_ip
     }
 
     if (-not $privateIp) {
-        throw "Linux manifest item '$($item.name)' is missing 'privateIp' (or 'private_ip')."
+        throw "Manifest item '$($item.name)' is missing 'privateIp' (or 'private_ip')."
     }
 
-    $shellName = "$($item.name)-ssh"
-    $shellPayload = @{
-        name          = $shellName
-        hostname      = $privateIp
-        port          = 22
-        protocol      = 'ssh'
-        jump_group_id = $jumpGroup.id
-        jumpoint_id   = $jumpoint.id
-        tags          = @($tag)
+    $protocols = @()
+    if ($item.protocol -is [System.Array]) {
+        $protocols = @($item.protocol)
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($item.protocol)) {
+        $protocols = @($item.protocol)
     }
 
-    New-PraJumpShortcut -BaseUrl $baseUrl -Token $token -Endpoint 'shell-jump' -Payload $shellPayload -ShortcutName $shellName -Attempts $MaxRetries -DelaySeconds $RetryDelaySeconds
+    if ($protocols.Count -eq 0) {
+        throw "Manifest item '$($item.name)' has create_shortcut=true but no protocol defined."
+    }
 
-    if ($item.gui -eq $true) {
-        $vncName = "$($item.name)-vnc"
-        $vncPayload = @{
-            name          = $vncName
+    foreach ($protocol in $protocols) {
+        $normalizedProtocol = $protocol.ToString().ToLowerInvariant()
+        $endpoint = Get-ShortcutEndpoint -Os $item.os -Protocol $normalizedProtocol
+        $shortcutName = "$($item.name)-$normalizedProtocol"
+        $payload = @{
+            name          = $shortcutName
             hostname      = $privateIp
-            port          = 5900
-            protocol      = 'vnc'
+            port          = (Get-ShortcutPort -Protocol $normalizedProtocol)
+            protocol      = $normalizedProtocol
             jump_group_id = $jumpGroup.id
             jumpoint_id   = $jumpoint.id
             tags          = @($tag)
         }
 
-        New-PraJumpShortcut -BaseUrl $baseUrl -Token $token -Endpoint 'remote-jump' -Payload $vncPayload -ShortcutName $vncName -Attempts $MaxRetries -DelaySeconds $RetryDelaySeconds
+        New-PraJumpShortcut -BaseUrl $baseUrl -Token $token -Endpoint $endpoint -Payload $payload -ShortcutName $shortcutName -Attempts $MaxRetries -DelaySeconds $RetryDelaySeconds
+
+        if ($endpoint -eq 'shell-jump') {
+            $createdShellShortcuts++
+        }
+        else {
+            $createdRemoteShortcuts++
+        }
     }
 }
 
-foreach ($item in $windowsItems) {
-    $privateIp = $item.privateIp
-    if (-not $privateIp) {
-        $privateIp = $item.private_ip
-    }
-
-    if (-not $privateIp) {
-        throw "Windows manifest item '$($item.name)' is missing 'privateIp' (or 'private_ip')."
-    }
-
-    $rdpName = "$($item.name)-rdp"
-    $rdpPayload = @{
-        name          = $rdpName
-        hostname      = $privateIp
-        port          = 3389
-        protocol      = 'rdp'
-        jump_group_id = $jumpGroup.id
-        jumpoint_id   = $jumpoint.id
-        tags          = @($tag)
-    }
-
-    New-PraJumpShortcut -BaseUrl $baseUrl -Token $token -Endpoint 'remote-jump' -Payload $rdpPayload -ShortcutName $rdpName -Attempts $MaxRetries -DelaySeconds $RetryDelaySeconds
-}
-
-Write-Host "Shortcut creation complete. Linux SSH: $($linuxItems.Count), Windows RDP: $($windowsItems.Count)."
+Write-Host "Shortcut creation complete. shell-jump: $createdShellShortcuts, remote-jump: $createdRemoteShortcuts."

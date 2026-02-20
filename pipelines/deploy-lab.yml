@@ -58,7 +58,6 @@ stages:
           vmImage: windows-latest
         steps:
           - checkout: self
-
           - task: PowerShell@2
             name: GenerateManifest
             displayName: 'Generate manifest based on runtime parameters'
@@ -128,17 +127,18 @@ stages:
                   -backend-config="resource_group_name=$(tfStateResourceGroup)" \
                   -backend-config="storage_account_name=$(tfStateStorageAccount)" \
                   -backend-config="container_name=$(tfStateContainer)" \
-                  -backend-config="key=windows-$(runId).tfstate"
+                  -backend-config="key=windows-$RUN_ID.tfstate"
 
-                terraform workspace select "$(runId)" || terraform workspace new "$(runId)"
+                terraform workspace select "$RUN_ID" || terraform workspace new "$RUN_ID"
 
                 terraform apply -auto-approve \
-                  -var "run_id=$(runId)" \
+                  -var "run_id=$RUN_ID" \
                   -var "jump_client_count=${{ parameters.windows_jump_client_count }}" \
                   -var "admin_username=LocalAdmin" \
                   -var "vnet_resource_group=$(vnetResourceGroup)" \
                   -var "vnet_name=$(vnetName)"
             env:
+              RUN_ID: $(runId)
               TF_VAR_admin_password: $(terraform-admin-password)
 
           - task: AzureCLI@2
@@ -161,18 +161,19 @@ stages:
                   -backend-config="resource_group_name=$(tfStateResourceGroup)" \
                   -backend-config="storage_account_name=$(tfStateStorageAccount)" \
                   -backend-config="container_name=$(tfStateContainer)" \
-                  -backend-config="key=linux-$(runId).tfstate"
+                  -backend-config="key=linux-$RUN_ID.tfstate"
 
-                terraform workspace select "$(runId)" || terraform workspace new "$(runId)"
+                terraform workspace select "$RUN_ID" || terraform workspace new "$RUN_ID"
 
                 terraform apply -auto-approve \
-                  -var "run_id=$(runId)" \
+                  -var "run_id=$RUN_ID" \
                   -var "jump_client_count=$((${{ parameters.rhel_9_4_count }} + ${{ parameters.suse_15_count }} + ${{ parameters.ubuntu_24_04_count }} + ${{ parameters.debian_12_count }} + ${{ parameters.fedora_40_count }}))" \
                   -var "linux_distro=ubuntu-24.04" \
                   -var "admin_username=LocalAdmin" \
                   -var "vnet_resource_group=$(vnetResourceGroup)" \
                   -var "vnet_name=$(vnetName)"
             env:
+              RUN_ID: $(runId)
               TF_VAR_admin_ssh_public_key: $(terraform-linux-ssh-public-key)
 
   - stage: ValidateApi
@@ -186,6 +187,10 @@ stages:
         steps:
           - checkout: self
 
+          - download: current
+            artifact: manifest
+            displayName: 'Download manifest artifact'
+
           - task: PowerShell@2
             displayName: 'Run PRA API validation'
             inputs:
@@ -193,11 +198,11 @@ stages:
               pwsh: true
               arguments: >-
                 -RunId "$(runId)"
-                -WindowsJumpClientCount ${{ parameters.windows_jump_client_count }}
-                -LinuxJumpClientCount ${{ add(add(add(add(parameters.rhel_9_4_count, parameters.suse_15_count), parameters.ubuntu_24_04_count), parameters.debian_12_count), parameters.fedora_40_count) }}
+                -ManifestPath "$(Pipeline.Workspace)/manifest/manifest.json"
                 -TimeoutMinutes 20
                 -PollSeconds 30
             env:
+              RUN_ID: $(runId)
               PRA_BASE_URL: $(praBaseUrl)
               PRA_CLIENT_ID: $(pra-client-id)
               PRA_CLIENT_SECRET: $(pra-client-secret)
