@@ -1,32 +1,77 @@
-# Visual Studio
-.vs/
-*.user
-*.suo
-*.userosscache
-*.sln.docstates
-
-# Build artifacts
-bin/
-obj/
-out/
-
+####################################
 # Terraform
-**/.terraform/*
+####################################
+
+# Lokale Terraform-Verzeichnisse
+Terraform_templates/**/.terraform/
+!.terraform.lock.hcl
+
+# Terraform State
 *.tfstate
 *.tfstate.*
+
+# Crash-Logs
 crash.log
+crash.*.log
+
+# Overrides
 override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
-.terraform.lock.hcl
 
-# PowerShell
-*.psd1.backup
+# CLI-Konfig
+.terraformrc
+terraform.rc
 
-# Logs
-*.log
+####################################
+# Terraform Provider Binaries (Windows)
+####################################
+**/terraform-provider-*.exe
 
-# OS generated
-.DS_Store
+####################################
+# IDEs / Editor
+####################################
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# Copilot / Index / interne DBs
+**/CopilotIndices/
+**/FileContentIndex/
+*.db
+*.db-wal
+*.sqlite
+*.vsidx
+
+####################################
+# Betriebssystem
+####################################
+
+# Windows
+desktop.ini
 Thumbs.db
+ehthumbs.db
+
+####################################
+# Sonstiges
+####################################
+
+# Temporäre Dateien
+*.log
+*.tmp
+*.bak
+
+# Zufällige GUID-/Artefakt-Ordner
+.849C9593-D756-4E56-8D6E-42412F2A707B
