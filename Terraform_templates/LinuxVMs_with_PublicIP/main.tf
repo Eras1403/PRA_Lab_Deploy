@@ -26,13 +26,13 @@ data "azurerm_subnet" "subnet" {
 module "common_infra" {
   source = "../../modules/common_infra"
 
-  resource_group_name   = var.resource_group_name
-  location              = var.location
-  nsg_name              = var.nsg_name
-  subnet_id             = data.azurerm_subnet.subnet.id
-  management_port       = 22
-  management_rule_name  = "Allow-SSH"
-  enable_https_inbound  = false
+  resource_group_name  = var.resource_group_name
+  location             = var.location
+  nsg_name             = var.nsg_name
+  subnet_id            = data.azurerm_subnet.subnet.id
+  management_port      = 22
+  management_rule_name = "Allow-SSH"
+  enable_https_inbound = false
 }
 
 # Linux image mapping (STRICT)
@@ -63,6 +63,15 @@ locals {
       offer     = "fedora-40"
       sku       = "40"
     }
+  }
+
+  # Optional desktop + VNC install commands used by the VM extension when enable_gui_vnc=true.
+  gui_vnc_install_commands = {
+    "ubuntu-24.04" = "sudo apt-get update -y && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y xfce4 xfce4-goodies tigervnc-standalone-server"
+    "debian-12"    = "sudo apt-get update -y && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y xfce4 xfce4-goodies tigervnc-standalone-server"
+    "rhel-9.4"     = "sudo dnf install -y @\"Server with GUI\" tigervnc-server"
+    "fedora-40"    = "sudo dnf install -y @\"Server with GUI\" tigervnc-server"
+    "suse-15"      = "sudo zypper --non-interactive refresh && sudo zypper --non-interactive install -y -t pattern xfce && sudo zypper --non-interactive install -y tigervnc"
   }
 }
 
@@ -123,4 +132,19 @@ resource "azurerm_linux_virtual_machine" "vm" {
     sku       = local.linux_images[var.linux_distro].sku
     version   = "latest"
   }
+}
+
+# Proposal: optional GUI + VNC bootstrap for PRA VNC Remote Jump shortcuts.
+resource "azurerm_virtual_machine_extension" "install_gui_vnc" {
+  count = var.enable_gui_vnc ? var.vm_count : 0
+
+  name                 = "${azurerm_linux_virtual_machine.vm[count.index].name}-gui-vnc"
+  virtual_machine_id   = azurerm_linux_virtual_machine.vm[count.index].id
+  publisher            = "Microsoft.Azure.Extensions"
+  type                 = "CustomScript"
+  type_handler_version = "2.1"
+
+  settings = jsonencode({
+    commandToExecute = local.gui_vnc_install_commands[var.linux_distro]
+  })
 }

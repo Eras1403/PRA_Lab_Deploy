@@ -64,3 +64,9 @@ variable "linux_distro" {
     error_message = "linux_distro must be one of: rhel-9.4, suse-15, ubuntu-24.04, debian-12, fedora-40"
   }
 }
+
+variable "enable_gui_vnc" {
+  description = "Install an XFCE desktop and VNC server on Linux VMs for PRA VNC remote-jump use cases"
+  type        = bool
+  default     = false
+}
