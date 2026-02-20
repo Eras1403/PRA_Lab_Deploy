@@ -35,7 +35,7 @@ stages:
           - task: PowerShell@2
             displayName: 'Cleanup PRA items by run tag'
             inputs:
-              filePath: 'scripts/pra_api/cleanup_jump_items.ps1'
+              filePath: 'automation/scripts/pra_api/cleanup_jump_items.ps1'
               pwsh: true
               arguments: >-
                 -RunId "$(runId)"
@@ -74,7 +74,7 @@ stages:
                 export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
                 export ARM_TENANT_ID="$tenantId"
 
-                cd Terraform_templates/WindowsVMs_with_PublicIP
+                cd infra/terraform/templates/windows_vms_with_public_ip
 
                 terraform init \
                   -backend-config="resource_group_name=$(tfStateResourceGroup)" \
@@ -104,7 +104,7 @@ stages:
                 export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
                 export ARM_TENANT_ID="$tenantId"
 
-                cd Terraform_templates/LinuxVMs_with_PublicIP
+                cd infra/terraform/templates/linux_vms_with_public_ip
 
                 terraform init \
                   -backend-config="resource_group_name=$(tfStateResourceGroup)" \

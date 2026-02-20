@@ -86,10 +86,10 @@ foreach ($definition in $deploymentMatrix) {
     $modulePath = $definition.module_path
     if ([string]::IsNullOrWhiteSpace($modulePath)) {
         if ($normalizedOs -eq 'windows') {
-            $modulePath = 'Terraform_templates/WindowsVMs_with_PublicIP'
+            $modulePath = 'infra/terraform/templates/windows_vms_with_public_ip'
         }
         else {
-            $modulePath = 'Terraform_templates/LinuxVMs_with_PublicIP'
+            $modulePath = 'infra/terraform/templates/linux_vms_with_public_ip'
         }
     }
 

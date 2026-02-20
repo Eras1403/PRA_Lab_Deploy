@@ -68,7 +68,7 @@ stages:
             name: GenerateManifest
             displayName: 'Generate manifest based on deployment matrix'
             inputs:
-              filePath: 'scripts/pra_api/generate_manifest.ps1'
+              filePath: 'automation/scripts/pra_api/generate_manifest.ps1'
               pwsh: true
               arguments: >-
                 -RunId "$(runId)"
@@ -124,7 +124,7 @@ stages:
                 WINDOWS_CLIENT_COUNT=$(python3 -c "import json; matrix=json.loads('''${{ convertToJson(parameters.deployment_matrix) }}'''); print(sum(int(i.get('count',0)) for i in matrix if str(i.get('os','')).lower()=='windows' and i.get('install_client') is True))")
 
 
-                cd Terraform_templates/WindowsVMs_with_PublicIP
+                cd infra/terraform/templates/windows_vms_with_public_ip
 
                 terraform init \
                   -backend-config="resource_group_name=$(tfStateResourceGroup)" \
@@ -161,7 +161,7 @@ stages:
                 read -r LINUX_CLIENT_COUNT LINUX_DISTRO < <(python3 -c "import json; matrix=json.loads('''${{ convertToJson(parameters.deployment_matrix) }}'''); linux=[i for i in matrix if str(i.get('os','')).lower()=='linux' and i.get('install_client') is True and int(i.get('count',0))>0]; count=sum(int(i.get('count',0)) for i in linux); distro=(linux[0].get('distro','ubuntu-24.04') if linux else 'ubuntu-24.04'); print(count, distro)")
 
 
-                cd Terraform_templates/LinuxVMs_with_PublicIP
+                cd infra/terraform/templates/linux_vms_with_public_ip
 
                 terraform init \
                   -backend-config="resource_group_name=$(tfStateResourceGroup)" \
@@ -200,7 +200,7 @@ stages:
           - task: PowerShell@2
             displayName: 'Run PRA API validation'
             inputs:
-              filePath: 'scripts/pra_api/validate_clients_online.ps1'
+              filePath: 'automation/scripts/pra_api/validate_clients_online.ps1'
               pwsh: true
               arguments: >-
                 -RunId "$(runId)"
