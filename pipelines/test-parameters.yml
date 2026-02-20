@@ -1,0 +1,38 @@
+# Kein automatischer Trigger, damit wir manuell mit Parametern starten
+trigger: none
+pr: none
+
+parameters:
+  - name: runId
+    displayName: "Eindeutige Lab-ID (z.B. lab01)"
+    type: string
+    default: "test-run"
+
+  - name: vmCount
+    displayName: "Anzahl der VMs"
+    type: number
+    default: 1
+    values:
+      - 1
+      - 2
+      - 3
+
+  - name: osType
+    displayName: "Betriebssystem"
+    type: string
+    default: 'Linux'
+    values:
+      - 'Linux'
+      - 'Windows'
+
+jobs:
+- job: ShowParams
+  displayName: "Parameter Check"
+  pool:
+    vmImage: 'ubuntu-latest'
+  steps:
+    - script: |
+        echo "Die gewählte Run-ID ist: ${{ parameters.runId }}"
+        echo "Die Anzahl der VMs ist: ${{ parameters.vmCount }}"
+        echo "Das gewählte OS ist: ${{ parameters.osType }}"
+      displayName: 'Parameter Werte ausgeben'
