@@ -1,3 +1,17 @@
+<#
+.SYNOPSIS
+Validiert, dass die erwartete Anzahl Jump Clients für einen Run online ist.
+
+.DESCRIPTION
+Das Skript pollt die PRA-API bis zur konfigurierten Zeitgrenze. Als Filter wird der
+Tag "run:<RunId>" verwendet, wodurch nur Objekte des aktuellen Deployments erfasst
+werden. Die Soll-Anzahl kann direkt übergeben oder aus einer Manifest-Datei
+abgeleitet werden.
+
+Wichtig:
+- API-Zugangsdaten werden ausschließlich über Umgebungsvariablen gelesen.
+- Bei Timeout wird mit klarer Fehlernachricht abgebrochen.
+#>
 param(
     [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
@@ -22,6 +36,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Holt ein OAuth2 Access Token via Client-Credentials-Flow.
+# Das Token wird für alle Folgeaufrufe gegen /api/config/v1 benötigt.
 function Get-PraAccessToken {
     param(
         [Parameter(Mandatory = $true)][string]$BaseUrl,
@@ -47,6 +63,8 @@ function Get-PraAccessToken {
     return $response.access_token
 }
 
+# Liest alle Jump Clients mit dem angegebenen Tag und zählt jene, die
+# anhand bekannter Felder als online interpretierbar sind.
 function Get-OnlineClientCount {
     param(
         [Parameter(Mandatory = $true)][string]$BaseUrl,

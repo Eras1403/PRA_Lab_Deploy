@@ -1,6 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# -----------------------------------------------------------------------------
+# Dieses Skript bereitet eine unbeaufsichtigte ("silent") Installation eines
+# BeyondTrust Jumpoint auf Linux vor.
+#
+# Wichtige Designentscheidung:
+# - Das Skript installiert Jumpoint NICHT direkt.
+# - Stattdessen erzeugt es unter /opt/beyondtrust/lab-bootstrap ein ausführbares
+#   Kommando-Skript (install_jumpoint.sh), das den eigentlichen Installer mit den
+#   korrekten Parametern ausführt.
+#
+# Warum dieser Ansatz?
+# - Die Bereitstellung kann in mehreren Schritten erfolgen (z. B. Download,
+#   Vorbereitung, späteres Ausführen durch einen separaten Provisioning-Schritt).
+# - Das erzeugte Kommando-Skript dokumentiert transparent, welche Optionen beim
+#   Installer verwendet werden.
+# - Logging wird zentral an einem stabilen Ort abgelegt.
+# -----------------------------------------------------------------------------
+
 RUN_ID="${1:-}"
 JUMP_GROUP="${2:-}"
 
@@ -10,6 +28,9 @@ if [[ -z "$RUN_ID" || -z "$JUMP_GROUP" ]]; then
 fi
 
 check_connectivity() {
+  # Prüft, ob das PRA-Zielsystem erreichbar ist, bevor Artefakte erzeugt werden.
+  # Dadurch werden frühzeitige Fehler sichtbar (z. B. DNS/Firewall/Proxy-Probleme),
+  # statt erst beim tatsächlichen Installer-Aufruf zu scheitern.
   local url="https://pa-test.trivadis.com"
   local max_attempts=12
   local delay_seconds=10
@@ -39,6 +60,8 @@ sudo mkdir -p "$install_root"
 cat <<EOF | sudo tee "$cmd_file" >/dev/null
 #!/usr/bin/env bash
 set -euo pipefail
+# Der Installer wird absichtlich mit --quiet und --accept-eula gestartet,
+# damit der Prozess vollständig ohne Benutzereingriff ausgeführt werden kann.
 ./BeyondTrustJumpoint.bin --quiet --accept-eula \\
   --run-id "${RUN_ID}" \\
   --jump-group "${JUMP_GROUP}" \\
