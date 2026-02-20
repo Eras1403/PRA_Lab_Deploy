@@ -8,12 +8,8 @@ param(
     [int]$ExpectedClients,
 
     [Parameter(Mandatory = $false)]
-    [ValidateRange(0, 1000)]
-    [int]$WindowsJumpClientCount = 0,
-
-    [Parameter(Mandatory = $false)]
-    [ValidateRange(0, 1000)]
-    [int]$LinuxJumpClientCount = 0,
+    [ValidateNotNullOrEmpty()]
+    [string]$ManifestPath = (Join-Path $PSScriptRoot 'manifest.json'),
 
     [Parameter(Mandatory = $false)]
     [ValidateRange(1, 120)]
@@ -94,11 +90,20 @@ if (-not $baseUrl -or -not $clientId -or -not $clientSecret) {
 
 $tag = "run:$RunId"
 if (-not $PSBoundParameters.ContainsKey('ExpectedClients')) {
-    $ExpectedClients = $WindowsJumpClientCount + $LinuxJumpClientCount
+    if (-not (Test-Path -Path $ManifestPath -PathType Leaf)) {
+        throw "Manifest file not found: $ManifestPath"
+    }
+
+    $manifest = Get-Content -Path $ManifestPath -Raw | ConvertFrom-Json
+    if ($manifest.runId -and $manifest.runId -ne $RunId) {
+        throw "Manifest runId '$($manifest.runId)' does not match provided RunId '$RunId'."
+    }
+
+    $ExpectedClients = @($manifest.items | Where-Object { $_.install_client -eq $true -or $_.as_jumpoint -eq $true }).Count
 }
 
 if ($ExpectedClients -lt 1) {
-    throw 'ExpectedClients must be >= 1 (directly or via WindowsJumpClientCount + LinuxJumpClientCount).'
+    throw 'ExpectedClients must be >= 1 (directly or derived from manifest install_client/as_jumpoint flags).'
 }
 $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
 $script:pollAttempt = 0

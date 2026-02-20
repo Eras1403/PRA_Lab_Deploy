@@ -35,6 +35,11 @@ $ErrorActionPreference = 'Stop'
 $tag = "run:$RunId"
 $jumpGroup = "Lab/$RunId"
 
+$totalRequestedClients = $WindowsJumpClientCount + $RhelCount + $SuseCount + $UbuntuCount + $DebianCount + $FedoraCount
+if ($totalRequestedClients -eq 0) {
+    throw 'At least one client count must be greater than 0. Empty deployments are not allowed.'
+}
+
 $items = [System.Collections.Generic.List[Object]]::new()
 
 for ($i = 1; $i -le $WindowsJumpClientCount; $i++) {
@@ -44,9 +49,13 @@ for ($i = 1; $i -le $WindowsJumpClientCount; $i++) {
             os         = 'windows'
             distro     = $null
             jumpGroup  = $jumpGroup
-            tags       = @($tag, 'type:windows-client')
-            adminUser  = 'LocalAdmin'
-            modulePath = 'Terraform_templates/WindowsVMs_with_PublicIP'
+            tags            = @($tag, 'type:windows-client')
+            adminUser       = 'LocalAdmin'
+            install_client  = $true
+            as_jumpoint     = $false
+            create_shortcut = $true
+            protocol        = 'rdp'
+            modulePath      = 'Terraform_templates/WindowsVMs_with_PublicIP'
         })
 }
 
@@ -68,9 +77,13 @@ function Add-LinuxJumpClients {
                 os         = 'linux'
                 distro     = $Distro
                 jumpGroup  = $jumpGroup
-                tags       = @($tag, 'type:linux-client')
-                adminUser  = 'LocalAdmin'
-                modulePath = 'Terraform_templates/LinuxVMs_with_PublicIP'
+                tags            = @($tag, 'type:linux-client')
+                adminUser       = 'LocalAdmin'
+                install_client  = $true
+                as_jumpoint     = $false
+                create_shortcut = $true
+                protocol        = 'ssh'
+                modulePath      = 'Terraform_templates/LinuxVMs_with_PublicIP'
             })
     }
 }
@@ -88,9 +101,13 @@ $items.Add([PSCustomObject]@{
         os         = 'windows'
         distro     = $null
         jumpGroup  = $jumpGroup
-        tags       = @($tag, 'type:jumpoint')
-        adminUser  = 'LocalAdmin'
-        modulePath = 'Terraform_templates/WindowsVMs_with_PublicIP'
+        tags            = @($tag, 'type:jumpoint')
+        adminUser       = 'LocalAdmin'
+        install_client  = $false
+        as_jumpoint     = $true
+        create_shortcut = $false
+        protocol        = $null
+        modulePath      = 'Terraform_templates/WindowsVMs_with_PublicIP'
     })
 
 $manifest = [PSCustomObject]@{
