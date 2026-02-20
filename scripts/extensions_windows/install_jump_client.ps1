@@ -1,3 +1,16 @@
+<#
+.SYNOPSIS
+Installiert den BeyondTrust Jump Client auf Windows und validiert den Dienststatus.
+
+.DESCRIPTION
+Das Skript ist für automatisierte Umgebungen (CI/CD, IaC-Provisioning) optimiert:
+- Silent MSI-Installation über msiexec.
+- Detailliertes MSI-Logging.
+- Aktive Validierung auf bekannte Service-Namen inkl. Retry-Logik.
+
+Damit wird nicht nur die Installationsrückgabe geprüft, sondern auch der echte
+Laufzeitzustand (Service = Running), was in Praxis deutlich robuster ist.
+#>
 param(
     [Parameter(Mandatory = $true)]
     [string]$RunId,
@@ -8,6 +21,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Wiederholte Reachability-Prüfung gegen PRA, damit Installationsfehler
+# wegen temporärer Netzprobleme klar von MSI-Fehlern getrennt werden können.
 function Test-PraConnectivity {
     param(
         [string]$Uri = 'https://pa-test.trivadis.com',
@@ -34,6 +49,8 @@ function Test-PraConnectivity {
     throw "[Connectivity] Unable to reach $Uri after $MaxAttempts attempts."
 }
 
+# Wartet auf den Running-Status eines der erwarteten Dienstnamen,
+# da je nach Paketversion unterschiedliche Service-Bezeichnungen vorkommen.
 function Wait-ServiceRunning {
     param(
         [Parameter(Mandatory = $true)][string[]]$ServiceNames,

@@ -1,3 +1,19 @@
+<#
+.SYNOPSIS
+Bereitet die unbeaufsichtigte BeyondTrust-Jumpoint-Installation auf Windows vor.
+
+.DESCRIPTION
+Dieses Skript führt bewusst KEINE direkte Installation aus, sondern erstellt eine
+CMD-Datei mit allen benötigten Silent-Installationsparametern. Dadurch kann die
+Ausführung zeitlich getrennt erfolgen (z. B. in einem späteren Provisioning-Schritt)
+und bleibt durch Log-Dateien nachvollziehbar.
+
+Hauptschritte:
+1) Parameter validieren (RunId/JumpGroup).
+2) PRA-Endpunkt auf Erreichbarkeit prüfen.
+3) Arbeitsverzeichnis unter C:\ProgramData\BeyondTrust\LabBootstrap anlegen.
+4) Installer-Befehl generieren und protokollieren.
+#>
 param(
     [Parameter(Mandatory = $true)]
     [string]$RunId,
@@ -8,6 +24,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Vorabprüfung auf PRA-Erreichbarkeit, um fehlerhafte Vorbereitungen
+# in nicht verbundenen Umgebungen zu verhindern.
 function Test-PraConnectivity {
     param(
         [string]$Uri = 'https://pa-test.trivadis.com',

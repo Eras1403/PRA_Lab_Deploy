@@ -1,3 +1,13 @@
+<#
+.SYNOPSIS
+Generiert ein standardisiertes Deployment-Manifest aus einer Matrix-Definition.
+
+.DESCRIPTION
+Die Matrix beschreibt gewünschte Serverrollen (z. B. Jumpoint, Targets), Betriebssystem,
+Anzahl und optionale Features (Client-Installation, Shortcut-Erzeugung). Das Skript
+validiert diese Eingaben streng und erzeugt daraus eine normalisierte manifest.json,
+die in nachgelagerten Pipeline-Schritten verwendet wird.
+#>
 param(
     [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
@@ -12,6 +22,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Der Manifestgenerator ist die zentrale Quelle für konsistente Deployments:
+# Er normalisiert Eingaben, ergänzt sinnvolle Defaults und erzwingt
+# Mindestanforderungen (z. B. mindestens ein Jumpoint).
 $tag = "run:$RunId"
 $jumpGroup = "Lab/$RunId"
 

@@ -1,3 +1,13 @@
+<#
+.SYNOPSIS
+Entfernt alle PRA-Objekte eines Deployments anhand des Run-Tags.
+
+.DESCRIPTION
+Für einen gegebenen RunId wird der Tag "run:<RunId>" gebildet. Anschließend werden
+alle relevanten Objekttypen (Jumpoint, Shell Jump, Remote Jump, Jump Client)
+abgerufen und gelöscht. Das Skript ist idempotenznah ausgelegt: Objekte ohne ID
+werden übersprungen, leere Trefferlisten sind zulässig.
+#>
 param(
     [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
@@ -6,6 +16,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# OAuth2-Anmeldung gegenüber PRA. Ohne gültiges Token sind keine
+# Konfigurationsabfragen/Löschoperationen möglich.
 function Get-PraAccessToken {
     param(
         [Parameter(Mandatory = $true)][string]$BaseUrl,
@@ -31,6 +43,8 @@ function Get-PraAccessToken {
     return $response.access_token
 }
 
+# Ruft alle Objekte eines Typs ab, die mit dem Run-Tag markiert sind.
+# Rückgabe wird auf eine einheitliche Array-Form normalisiert.
 function Get-PraObjectsByType {
     param(
         [Parameter(Mandatory = $true)][string]$BaseUrl,
@@ -53,6 +67,8 @@ function Get-PraObjectsByType {
     return @($response)
 }
 
+# Löscht alle zuvor gefundenen Objekte eines Typs sequenziell.
+# Sequenzielles Löschen erleichtert Troubleshooting im Pipeline-Log.
 function Remove-PraObjectsByType {
     param(
         [Parameter(Mandatory = $true)][string]$BaseUrl,

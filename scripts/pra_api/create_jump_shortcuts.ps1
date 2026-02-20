@@ -1,3 +1,17 @@
+<#
+.SYNOPSIS
+Erstellt Shell-/Remote-Jump-Shortcuts in PRA auf Basis eines Manifests.
+
+.DESCRIPTION
+Das Skript liest die erzeugte Deployment-Beschreibung (manifest.json), ermittelt die
+zugehörige Jump Group und den Jumpoint und erzeugt anschließend je nach OS/Protokoll
+passende Shortcut-Objekte über die PRA-API.
+
+Robustheitsmerkmale:
+- Einheitlicher API-Retry-Mechanismus für transiente Fehler.
+- Strikte Protokoll-/OS-Validierung (z. B. RDP nur für Windows).
+- Unterstützt Einzelprotokoll und Protokoll-Arrays pro Zielsystem.
+#>
 param(
     [Parameter(Mandatory = $false)]
     [ValidateNotNullOrEmpty()]
@@ -14,6 +28,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Generische REST-Hülle mit Retry-Verhalten für transiente Fehler
+# (z. B. 429/5xx oder kurzzeitige Netzwerkprobleme).
 function Invoke-PraApiWithRetry {
     param(
         [Parameter(Mandatory = $true)][ValidateSet('Get', 'Post', 'Delete', 'Put', 'Patch')][string]$Method,
@@ -60,6 +76,8 @@ function Invoke-PraApiWithRetry {
     }
 }
 
+# Erstellt ein Bearer-Token, das anschließend an jede API-Anfrage
+# im Authorization-Header angehängt wird.
 function Get-PraAccessToken {
     param(
         [Parameter(Mandatory = $true)][string]$BaseUrl,
@@ -87,6 +105,8 @@ function Get-PraAccessToken {
     return $response.access_token
 }
 
+# Vereinheitlicht unterschiedliche API-Rückgabeformen (Array, items[],
+# einzelnes Objekt, null) auf ein robust iterierbares Array.
 function ConvertTo-ObjectArray {
     param([Parameter(Mandatory = $false)]$Response)
 
@@ -96,6 +116,8 @@ function ConvertTo-ObjectArray {
     return @($Response)
 }
 
+# Lädt genau ein PRA-Objekt über Namensfilter und erzwingt, dass
+# mindestens ein Treffer existiert, um Folgefehler früh zu vermeiden.
 function Get-PraSingleObjectByName {
     param(
         [Parameter(Mandatory = $true)][string]$BaseUrl,
@@ -119,6 +141,8 @@ function Get-PraSingleObjectByName {
     return $items[0]
 }
 
+# Erzeugt einen Shortcut vom gewünschten Typ (shell-jump oder remote-jump)
+# mit bereits validiertem Payload.
 function New-PraJumpShortcut {
     param(
         [Parameter(Mandatory = $true)][string]$BaseUrl,
@@ -135,6 +159,8 @@ function New-PraJumpShortcut {
     Write-Host "[Create] Created $Endpoint '$ShortcutName'"
 }
 
+# Stellt eine zentrale Portzuordnung je Protokoll bereit, damit die
+# Zuordnung nicht verteilt im Code dupliziert werden muss.
 function Get-ShortcutPort {
     param(
         [Parameter(Mandatory = $true)][string]$Protocol
@@ -148,6 +174,8 @@ function Get-ShortcutPort {
     }
 }
 
+# Bestimmt anhand von Betriebssystem + Protokoll, welches PRA-Endpoint
+# genutzt werden muss und verhindert ungültige Kombinationen.
 function Get-ShortcutEndpoint {
     param(
         [Parameter(Mandatory = $true)][string]$Os,
