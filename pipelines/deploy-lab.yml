@@ -64,7 +64,6 @@ stages:
           vmImage: windows-latest
         steps:
           - checkout: self
-
           - task: PowerShell@2
             name: GenerateManifest
             displayName: 'Generate manifest based on deployment matrix'
@@ -209,6 +208,7 @@ stages:
                 -TimeoutMinutes 20
                 -PollSeconds 30
             env:
+              RUN_ID: $(runId)
               PRA_BASE_URL: $(praBaseUrl)
               PRA_CLIENT_ID: $(pra-client-id)
               PRA_CLIENT_SECRET: $(pra-client-secret)
