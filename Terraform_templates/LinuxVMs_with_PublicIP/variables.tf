@@ -14,8 +14,8 @@ variable "admin_username" {
   type = string
 }
 
-variable "admin_password" {
-  description = "Admin password for Linux VM (will be prompted)"
+variable "admin_ssh_public_key" {
+  description = "SSH public key for Linux VM admin access"
   type        = string
   sensitive   = true
 }

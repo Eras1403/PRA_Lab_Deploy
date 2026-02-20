@@ -27,25 +27,59 @@ check_connectivity() {
   return 1
 }
 
+wait_for_service() {
+  local service_name="$1"
+  local max_attempts=12
+  local delay_seconds=5
+
+  for ((attempt=1; attempt<=max_attempts; attempt++)); do
+    if systemctl is-active --quiet "$service_name"; then
+      echo "[Validation] Service '${service_name}' is running."
+      return 0
+    fi
+
+    echo "[Validation] Waiting for service '${service_name}' (attempt ${attempt}/${max_attempts})"
+    sleep "$delay_seconds"
+  done
+
+  return 1
+}
+
 echo "Preparing BeyondTrust Jump Client setup for RunId=${RUN_ID}, JumpGroup=${JUMP_GROUP}"
 check_connectivity
 
+installer="./BeyondTrustJumpClient.run"
+if [[ ! -x "$installer" ]]; then
+  echo "[Install] Installer '$installer' not found or not executable." >&2
+  exit 1
+fi
+
 install_root="/opt/beyondtrust/lab-bootstrap"
 log_file="${install_root}/jump-client-install.log"
-cmd_file="${install_root}/install_jump_client.sh"
+service_candidates=(bomgar-jump-client bt-jump-client bomgar-scc)
 
 sudo mkdir -p "$install_root"
 
-cat <<EOF | sudo tee "$cmd_file" >/dev/null
-#!/usr/bin/env bash
-set -euo pipefail
-./BeyondTrustJumpClient.run --quiet --nox11 --accept-eula \\
-  --run-id "${RUN_ID}" \\
-  --jump-group "${JUMP_GROUP}" \\
+install_cmd=(
+  "$installer" --quiet --nox11 --accept-eula
+  --run-id "$RUN_ID"
+  --jump-group "$JUMP_GROUP"
   --install-scope machine
-EOF
+)
 
-sudo chmod 750 "$cmd_file"
-echo "$(date -Iseconds) Prepared Jump Client silent installation command in ${cmd_file}" | sudo tee -a "$log_file" >/dev/null
+echo "[Install] Running Jump Client installer..."
+sudo "${install_cmd[@]}" | sudo tee -a "$log_file"
 
-echo "Jump Client preparation completed. Command script: ${cmd_file}"
+echo "[Validation] Checking Jump Client service startup..."
+for svc in "${service_candidates[@]}"; do
+  if systemctl list-unit-files --type=service | awk '{print $1}' | grep -q "^${svc}\.service$"; then
+    if wait_for_service "$svc"; then
+      echo "Jump Client installation completed successfully."
+      exit 0
+    fi
+  fi
+done
+
+echo "[Validation] Unable to verify running Jump Client service. Checked: ${service_candidates[*]}" >&2
+sudo systemctl --no-pager --type=service --state=running | grep -Ei 'bomgar|beyondtrust|jump' || true
+exit 1

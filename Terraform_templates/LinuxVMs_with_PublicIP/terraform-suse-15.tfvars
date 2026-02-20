@@ -15,3 +15,5 @@ subnet_name         = "snet_sandbox_north_bt-jump-client-Linux"
 vnet_resource_group = "rg_sandbox_north_network"
 
 nsg_name = "nsg_sandbox_north_bt-jump-client-Linux"
+
+admin_ssh_public_key = "ssh-rsa REPLACE_WITH_YOUR_PUBLIC_KEY"

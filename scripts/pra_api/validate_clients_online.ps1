@@ -36,9 +36,19 @@ function Get-PraAccessToken {
     $tokenUri = "$BaseUrl/oauth2/token"
     Write-Host "Requesting OAuth token from $tokenUri"
 
-    # Simulated OAuth token response for pipeline orchestration.
-    # Replace with Invoke-RestMethod POST to /oauth2/token in real integration.
-    return "simulated-token-$([guid]::NewGuid())"
+    $body = @{
+        grant_type    = 'client_credentials'
+        client_id     = $ClientId
+        client_secret = $ClientSecret
+    }
+
+    $response = Invoke-RestMethod -Method Post -Uri $tokenUri -Body $body -ContentType 'application/x-www-form-urlencoded'
+
+    if (-not $response.access_token) {
+        throw 'PRA token response did not include access_token.'
+    }
+
+    return $response.access_token
 }
 
 function Get-OnlineClientCount {
@@ -48,17 +58,39 @@ function Get-OnlineClientCount {
         [Parameter(Mandatory = $true)][string]$Tag
     )
 
-    $uri = "$BaseUrl/api/config/v1/jump-client?filter=tag:$Tag"
+    $encodedFilter = [System.Uri]::EscapeDataString("tag:$Tag")
+    $uri = "$BaseUrl/api/config/v1/jump-client?filter=$encodedFilter"
     Write-Host "Polling PRA API endpoint: $uri"
 
-    # Simulate progressive client registration (for demo/testing pipeline behavior).
-    $simulatedCount = [Math]::Min($script:ExpectedClients, $script:pollAttempt)
-    return $simulatedCount
+    $response = Invoke-RestMethod -Method Get -Uri $uri -Headers @{ Authorization = "Bearer $Token" }
+
+    $clients = if ($response -is [System.Array]) {
+        $response
+    }
+    elseif ($response.items) {
+        @($response.items)
+    }
+    elseif ($null -eq $response) {
+        @()
+    }
+    else {
+        @($response)
+    }
+
+    $onlineClients = $clients | Where-Object {
+        $_.is_online -eq $true -or $_.online -eq $true -or $_.status -eq 'online'
+    }
+
+    return ($onlineClients | Measure-Object).Count
 }
 
-$baseUrl = if ($env:PRA_BASE_URL) { $env:PRA_BASE_URL } else { 'https://pa-test.trivadis.com' }
-$clientId = if ($env:PRA_CLIENT_ID) { $env:PRA_CLIENT_ID } else { 'simulated-client-id' }
-$clientSecret = if ($env:PRA_CLIENT_SECRET) { $env:PRA_CLIENT_SECRET } else { 'simulated-client-secret' }
+$baseUrl = $env:PRA_BASE_URL
+$clientId = $env:PRA_CLIENT_ID
+$clientSecret = $env:PRA_CLIENT_SECRET
+
+if (-not $baseUrl -or -not $clientId -or -not $clientSecret) {
+    throw 'PRA_BASE_URL, PRA_CLIENT_ID and PRA_CLIENT_SECRET environment variables are required.'
+}
 
 $tag = "run:$RunId"
 if (-not $PSBoundParameters.ContainsKey('ExpectedClients')) {
@@ -70,7 +102,6 @@ if ($ExpectedClients -lt 1) {
 }
 $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
 $script:pollAttempt = 0
-$script:ExpectedClients = $ExpectedClients
 
 $token = Get-PraAccessToken -BaseUrl $baseUrl -ClientId $clientId -ClientSecret $clientSecret
 
