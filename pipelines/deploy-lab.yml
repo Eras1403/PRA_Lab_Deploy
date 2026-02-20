@@ -4,37 +4,145 @@ pr: none
 name: deploy-$(Date:yyyyMMdd)$(Rev:.r)
 
 parameters:
-  - name: deployment_matrix
-    displayName: Deployment Matrix (server definitions)
-    type: object
-    default:
-      - name_prefix: win-jump-client
-        count: 1
-        os: windows
-        role: jump-client
-        distro: null
-        install_client: true
-        as_jumpoint: false
-        create_shortcut: true
-        protocol: rdp
-      - name_prefix: ubuntu-jump-client
-        count: 1
-        os: linux
-        role: jump-client
-        distro: ubuntu-24.04
-        install_client: true
-        as_jumpoint: false
-        create_shortcut: true
-        protocol: ssh
-      - name_prefix: jumpoint
-        count: 1
-        os: windows
-        role: jumpoint
-        distro: null
-        install_client: false
-        as_jumpoint: true
-        create_shortcut: false
-        protocol: null
+  - name: vm1_enabled
+    displayName: 'VM1 - Enabled'
+    type: boolean
+    default: true
+  - name: vm1_os
+    displayName: 'VM1 - Operating System'
+    type: string
+    default: 'Windows'
+    values: ['Windows', 'Linux']
+  - name: vm1_role
+    displayName: 'VM1 - Role'
+    type: string
+    default: 'jump-client'
+    values: ['jump-client', 'jumpoint']
+  - name: vm1_install_client
+    displayName: 'VM1 - Install PRA Client'
+    type: boolean
+    default: true
+  - name: vm1_create_shortcut
+    displayName: 'VM1 - Create PRA Shortcut'
+    type: boolean
+    default: true
+  - name: vm1_protocol
+    displayName: 'VM1 - Connection Protocol'
+    type: string
+    default: 'rdp'
+    values: ['rdp', 'ssh', 'vnc']
+
+  - name: vm2_enabled
+    displayName: 'VM2 - Enabled'
+    type: boolean
+    default: true
+  - name: vm2_os
+    displayName: 'VM2 - Operating System'
+    type: string
+    default: 'Linux'
+    values: ['Windows', 'Linux']
+  - name: vm2_role
+    displayName: 'VM2 - Role'
+    type: string
+    default: 'jump-client'
+    values: ['jump-client', 'jumpoint']
+  - name: vm2_install_client
+    displayName: 'VM2 - Install PRA Client'
+    type: boolean
+    default: true
+  - name: vm2_create_shortcut
+    displayName: 'VM2 - Create PRA Shortcut'
+    type: boolean
+    default: true
+  - name: vm2_protocol
+    displayName: 'VM2 - Connection Protocol'
+    type: string
+    default: 'ssh'
+    values: ['rdp', 'ssh', 'vnc']
+
+  - name: vm3_enabled
+    displayName: 'VM3 - Enabled'
+    type: boolean
+    default: true
+  - name: vm3_os
+    displayName: 'VM3 - Operating System'
+    type: string
+    default: 'Windows'
+    values: ['Windows', 'Linux']
+  - name: vm3_role
+    displayName: 'VM3 - Role'
+    type: string
+    default: 'jumpoint'
+    values: ['jump-client', 'jumpoint']
+  - name: vm3_install_client
+    displayName: 'VM3 - Install PRA Client'
+    type: boolean
+    default: true
+  - name: vm3_create_shortcut
+    displayName: 'VM3 - Create PRA Shortcut'
+    type: boolean
+    default: false
+  - name: vm3_protocol
+    displayName: 'VM3 - Connection Protocol'
+    type: string
+    default: 'rdp'
+    values: ['rdp', 'ssh', 'vnc']
+
+  - name: vm4_enabled
+    displayName: 'VM4 - Enabled'
+    type: boolean
+    default: false
+  - name: vm4_os
+    displayName: 'VM4 - Operating System'
+    type: string
+    default: 'Linux'
+    values: ['Windows', 'Linux']
+  - name: vm4_role
+    displayName: 'VM4 - Role'
+    type: string
+    default: 'jump-client'
+    values: ['jump-client', 'jumpoint']
+  - name: vm4_install_client
+    displayName: 'VM4 - Install PRA Client'
+    type: boolean
+    default: true
+  - name: vm4_create_shortcut
+    displayName: 'VM4 - Create PRA Shortcut'
+    type: boolean
+    default: true
+  - name: vm4_protocol
+    displayName: 'VM4 - Connection Protocol'
+    type: string
+    default: 'ssh'
+    values: ['rdp', 'ssh', 'vnc']
+
+  - name: vm5_enabled
+    displayName: 'VM5 - Enabled'
+    type: boolean
+    default: false
+  - name: vm5_os
+    displayName: 'VM5 - Operating System'
+    type: string
+    default: 'Windows'
+    values: ['Windows', 'Linux']
+  - name: vm5_role
+    displayName: 'VM5 - Role'
+    type: string
+    default: 'jump-client'
+    values: ['jump-client', 'jumpoint']
+  - name: vm5_install_client
+    displayName: 'VM5 - Install PRA Client'
+    type: boolean
+    default: true
+  - name: vm5_create_shortcut
+    displayName: 'VM5 - Create PRA Shortcut'
+    type: boolean
+    default: true
+  - name: vm5_protocol
+    displayName: 'VM5 - Connection Protocol'
+    type: string
+    default: 'rdp'
+    values: ['rdp', 'ssh', 'vnc']
 
 variables:
   - name: azureServiceConnection
@@ -65,6 +173,70 @@ stages:
         steps:
           - checkout: self
           - task: PowerShell@2
+            name: BuildDynamicMatrix
+            displayName: 'Build dynamic deployment matrix from VM parameters'
+            inputs:
+              pwsh: true
+              targetType: inline
+              script: |
+                $ErrorActionPreference = 'Stop'
+
+                $vmDefinitions = @(
+                  @{ index = 1; enabled = [System.Convert]::ToBoolean('${{ parameters.vm1_enabled }}'); os = '${{ parameters.vm1_os }}'; role = '${{ parameters.vm1_role }}'; installClient = [System.Convert]::ToBoolean('${{ parameters.vm1_install_client }}'); createShortcut = [System.Convert]::ToBoolean('${{ parameters.vm1_create_shortcut }}'); protocol = '${{ parameters.vm1_protocol }}' },
+                  @{ index = 2; enabled = [System.Convert]::ToBoolean('${{ parameters.vm2_enabled }}'); os = '${{ parameters.vm2_os }}'; role = '${{ parameters.vm2_role }}'; installClient = [System.Convert]::ToBoolean('${{ parameters.vm2_install_client }}'); createShortcut = [System.Convert]::ToBoolean('${{ parameters.vm2_create_shortcut }}'); protocol = '${{ parameters.vm2_protocol }}' },
+                  @{ index = 3; enabled = [System.Convert]::ToBoolean('${{ parameters.vm3_enabled }}'); os = '${{ parameters.vm3_os }}'; role = '${{ parameters.vm3_role }}'; installClient = [System.Convert]::ToBoolean('${{ parameters.vm3_install_client }}'); createShortcut = [System.Convert]::ToBoolean('${{ parameters.vm3_create_shortcut }}'); protocol = '${{ parameters.vm3_protocol }}' },
+                  @{ index = 4; enabled = [System.Convert]::ToBoolean('${{ parameters.vm4_enabled }}'); os = '${{ parameters.vm4_os }}'; role = '${{ parameters.vm4_role }}'; installClient = [System.Convert]::ToBoolean('${{ parameters.vm4_install_client }}'); createShortcut = [System.Convert]::ToBoolean('${{ parameters.vm4_create_shortcut }}'); protocol = '${{ parameters.vm4_protocol }}' },
+                  @{ index = 5; enabled = [System.Convert]::ToBoolean('${{ parameters.vm5_enabled }}'); os = '${{ parameters.vm5_os }}'; role = '${{ parameters.vm5_role }}'; installClient = [System.Convert]::ToBoolean('${{ parameters.vm5_install_client }}'); createShortcut = [System.Convert]::ToBoolean('${{ parameters.vm5_create_shortcut }}'); protocol = '${{ parameters.vm5_protocol }}' }
+                )
+
+                $matrix = [System.Collections.Generic.List[Object]]::new()
+                foreach ($vm in $vmDefinitions) {
+                  if (-not $vm.enabled) {
+                    continue
+                  }
+
+                  $normalizedOs = $vm.os.ToLowerInvariant()
+                  if ($normalizedOs -notin @('windows', 'linux')) {
+                    throw "VM$($vm.index): unsupported os '$($vm.os)'."
+                  }
+
+                  $normalizedRole = $vm.role.ToLowerInvariant()
+                  if ($normalizedRole -notin @('jump-client', 'jumpoint')) {
+                    throw "VM$($vm.index): unsupported role '$($vm.role)'."
+                  }
+
+                  $normalizedProtocol = $vm.protocol.ToLowerInvariant()
+                  if ($normalizedOs -eq 'windows' -and $normalizedProtocol -ne 'rdp') {
+                    throw "VM$($vm.index): Windows requires protocol 'rdp'."
+                  }
+
+                  if ($normalizedOs -eq 'linux' -and $normalizedProtocol -notin @('ssh', 'vnc')) {
+                    throw "VM$($vm.index): Linux requires protocol 'ssh' or 'vnc'."
+                  }
+
+                  $matrix.Add([PSCustomObject]@{
+                      name_prefix     = "vm$($vm.index)-$normalizedOs-$normalizedRole"
+                      count           = 1
+                      os              = $normalizedOs
+                      role            = $normalizedRole
+                      distro          = if ($normalizedOs -eq 'linux') { 'ubuntu-24.04' } else { $null }
+                      install_client  = $vm.installClient
+                      as_jumpoint     = ($normalizedRole -eq 'jumpoint')
+                      create_shortcut = $vm.createShortcut
+                      protocol        = $normalizedProtocol
+                      module_path     = if ($normalizedOs -eq 'windows') { 'infra/terraform/templates/windows_vms_with_public_ip' } else { 'infra/terraform/templates/linux_vms_with_public_ip' }
+                      admin_user      = 'LocalAdmin'
+                    })
+                }
+
+                if ($matrix.Count -eq 0) {
+                  throw 'At least one enabled VM is required.'
+                }
+
+                $dynamicMatrix = $matrix | ConvertTo-Json -Depth 10 -Compress
+                Write-Host "##vso[task.setvariable variable=DynamicMatrix]$dynamicMatrix"
+                Write-Host "DynamicMatrix generated with $($matrix.Count) VM definition(s)."
+          - task: PowerShell@2
             name: GenerateManifest
             displayName: 'Generate manifest based on deployment matrix'
             inputs:
@@ -72,7 +244,7 @@ stages:
               pwsh: true
               arguments: >-
                 -RunId "$(runId)"
-                -DeploymentMatrixJson '${{ convertToJson(parameters.deployment_matrix) }}'
+                -DeploymentMatrixJson '$(DynamicMatrix)'
                 -OutputPath "$(Build.ArtifactStagingDirectory)/manifest.json"
 
           - publish: '$(Build.ArtifactStagingDirectory)/manifest.json'
@@ -121,7 +293,7 @@ stages:
                 export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
                 export ARM_TENANT_ID="$tenantId"
 
-                WINDOWS_CLIENT_COUNT=$(python3 -c "import json; matrix=json.loads('''${{ convertToJson(parameters.deployment_matrix) }}'''); print(sum(int(i.get('count',0)) for i in matrix if str(i.get('os','')).lower()=='windows' and i.get('install_client') is True))")
+                WINDOWS_CLIENT_COUNT=$(python3 -c "import json,pathlib; manifest=json.loads(pathlib.Path(r'$(Pipeline.Workspace)/manifest/manifest.json').read_text()); print(sum(1 for i in manifest.get('items',[]) if str(i.get('os','')).lower()=='windows' and i.get('install_client') is True))")
 
 
                 cd infra/terraform/templates/windows_vms_with_public_ip
@@ -158,7 +330,7 @@ stages:
                 export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
                 export ARM_TENANT_ID="$tenantId"
 
-                read -r LINUX_CLIENT_COUNT LINUX_DISTRO < <(python3 -c "import json; matrix=json.loads('''${{ convertToJson(parameters.deployment_matrix) }}'''); linux=[i for i in matrix if str(i.get('os','')).lower()=='linux' and i.get('install_client') is True and int(i.get('count',0))>0]; count=sum(int(i.get('count',0)) for i in linux); distro=(linux[0].get('distro','ubuntu-24.04') if linux else 'ubuntu-24.04'); print(count, distro)")
+                read -r LINUX_CLIENT_COUNT LINUX_DISTRO < <(python3 -c "import json,pathlib; manifest=json.loads(pathlib.Path(r'$(Pipeline.Workspace)/manifest/manifest.json').read_text()); linux=[i for i in manifest.get('items',[]) if str(i.get('os','')).lower()=='linux' and i.get('install_client') is True]; count=len(linux); distro=(linux[0].get('distro','ubuntu-24.04') if linux else 'ubuntu-24.04'); print(count, distro)")
 
 
                 cd infra/terraform/templates/linux_vms_with_public_ip
