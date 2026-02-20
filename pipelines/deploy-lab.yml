@@ -1,0 +1,181 @@
+trigger: none
+pr: none
+
+name: deploy-$(Date:yyyyMMdd)$(Rev:.r)
+
+parameters:
+  - name: runId
+    displayName: Run Identifier
+    type: string
+    default: ''
+  - name: windows_jump_client_count
+    displayName: Number of Windows Jump Clients
+    type: number
+    default: 1
+  - name: linux_jump_client_count
+    displayName: Number of Linux Jump Clients
+    type: number
+    default: 1
+  - name: linux_distro
+    displayName: Linux Distribution
+    type: string
+    default: ubuntu-24.04
+    values:
+      - rhel-9.4
+      - suse-15
+      - ubuntu-24.04
+      - debian-12
+      - fedora-40
+
+variables:
+  # Consider moving these variables into a Library Variable Group.
+  - name: azureServiceConnection
+    value: 'sc-azure-lab-deploy'
+  - name: tfStateResourceGroup
+    value: 'rg-terraform-state'
+  - name: tfStateStorageAccount
+    value: 'stterraformstate001'
+  - name: tfStateContainer
+    value: 'tfstate'
+  - name: vnetResourceGroup
+    value: 'rg_sandbox_north_network'
+  - name: vnetName
+    value: 'vnet_sandbox_north'
+
+stages:
+  - stage: GenerateManifest
+    displayName: 'Stage 1 - Generate Deployment Manifest'
+    jobs:
+      - job: BuildManifest
+        displayName: 'Build manifest.json'
+        pool:
+          vmImage: windows-latest
+        steps:
+          - checkout: self
+
+          - task: PowerShell@2
+            name: GenerateManifest
+            displayName: 'Generate manifest based on runtime parameters'
+            inputs:
+              filePath: 'scripts/pra_api/generate_manifest.ps1'
+              pwsh: true
+              arguments: >-
+                -RunId "${{ parameters.runId }}"
+                -WindowsJumpClientCount ${{ parameters.windows_jump_client_count }}
+                -LinuxJumpClientCount ${{ parameters.linux_jump_client_count }}
+                -LinuxDistro "${{ parameters.linux_distro }}"
+                -OutputPath "$(Build.ArtifactStagingDirectory)/manifest.json"
+
+          - publish: '$(Build.ArtifactStagingDirectory)/manifest.json'
+            artifact: manifest
+            displayName: 'Publish manifest artifact'
+
+  - stage: TerraformDeploy
+    displayName: 'Stage 2 - Terraform Init & Apply'
+    dependsOn: GenerateManifest
+    jobs:
+      - job: DeployInfrastructure
+        displayName: 'Deploy PRA lab infrastructure'
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+
+          - download: current
+            artifact: manifest
+            displayName: 'Download manifest artifact'
+
+          - task: TerraformInstaller@1
+            displayName: 'Install Terraform'
+            inputs:
+              terraformVersion: '1.7.5'
+
+          - task: AzureCLI@2
+            displayName: 'Terraform init/apply - Windows module'
+            inputs:
+              azureSubscription: '$(azureServiceConnection)'
+              scriptType: bash
+              scriptLocation: inlineScript
+              addSpnToEnvironment: true
+              inlineScript: |
+                set -euo pipefail
+                export ARM_CLIENT_ID="$servicePrincipalId"
+                export ARM_CLIENT_SECRET="$servicePrincipalKey"
+                export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
+                export ARM_TENANT_ID="$tenantId"
+
+                cd Terraform_templates/WindowsVMs_with_PublicIP
+
+                terraform init \
+                  -backend-config="resource_group_name=$(tfStateResourceGroup)" \
+                  -backend-config="storage_account_name=$(tfStateStorageAccount)" \
+                  -backend-config="container_name=$(tfStateContainer)" \
+                  -backend-config="key=windows-${{ parameters.runId }}.tfstate"
+
+                terraform workspace select "${{ parameters.runId }}" || terraform workspace new "${{ parameters.runId }}"
+
+                terraform apply -auto-approve \
+                  -var "run_id=${{ parameters.runId }}" \
+                  -var "jump_client_count=${{ parameters.windows_jump_client_count }}" \
+                  -var "admin_username=LocalAdmin" \
+                  -var "vnet_resource_group=$(vnetResourceGroup)" \
+                  -var "vnet_name=$(vnetName)"
+
+          - task: AzureCLI@2
+            displayName: 'Terraform init/apply - Linux module'
+            inputs:
+              azureSubscription: '$(azureServiceConnection)'
+              scriptType: bash
+              scriptLocation: inlineScript
+              addSpnToEnvironment: true
+              inlineScript: |
+                set -euo pipefail
+                export ARM_CLIENT_ID="$servicePrincipalId"
+                export ARM_CLIENT_SECRET="$servicePrincipalKey"
+                export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
+                export ARM_TENANT_ID="$tenantId"
+
+                cd Terraform_templates/LinuxVMs_with_PublicIP
+
+                terraform init \
+                  -backend-config="resource_group_name=$(tfStateResourceGroup)" \
+                  -backend-config="storage_account_name=$(tfStateStorageAccount)" \
+                  -backend-config="container_name=$(tfStateContainer)" \
+                  -backend-config="key=linux-${{ parameters.runId }}.tfstate"
+
+                terraform workspace select "${{ parameters.runId }}" || terraform workspace new "${{ parameters.runId }}"
+
+                terraform apply -auto-approve \
+                  -var "run_id=${{ parameters.runId }}" \
+                  -var "jump_client_count=${{ parameters.linux_jump_client_count }}" \
+                  -var "linux_distro=${{ parameters.linux_distro }}" \
+                  -var "admin_username=LocalAdmin" \
+                  -var "vnet_resource_group=$(vnetResourceGroup)" \
+                  -var "vnet_name=$(vnetName)"
+
+  - stage: ValidateApi
+    displayName: 'Stage 3 - API Validation'
+    dependsOn: TerraformDeploy
+    jobs:
+      - job: ValidateClients
+        displayName: 'Validate Jump Clients are online'
+        pool:
+          vmImage: windows-latest
+        steps:
+          - checkout: self
+
+          - task: PowerShell@2
+            displayName: 'Run PRA API validation'
+            inputs:
+              filePath: 'scripts/pra_api/validate_clients_online.ps1'
+              pwsh: true
+              arguments: >-
+                -RunId "${{ parameters.runId }}"
+                -WindowsJumpClientCount ${{ parameters.windows_jump_client_count }}
+                -LinuxJumpClientCount ${{ parameters.linux_jump_client_count }}
+                -TimeoutMinutes 20
+                -PollSeconds 30
+            env:
+              PRA_BASE_URL: $(praBaseUrl)
+              PRA_CLIENT_ID: $(praClientId)
+              PRA_CLIENT_SECRET: $(praClientSecret)
