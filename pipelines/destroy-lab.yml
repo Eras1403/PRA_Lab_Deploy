@@ -1,0 +1,115 @@
+trigger: none
+pr: none
+
+name: destroy-$(Date:yyyyMMdd)$(Rev:.r)
+
+parameters:
+  - name: runId
+    displayName: Run Identifier
+    type: string
+    default: ''
+
+variables:
+  - name: azureServiceConnection
+    value: 'sc-azure-lab-deploy'
+  - name: tfStateResourceGroup
+    value: 'rg-terraform-state'
+  - name: tfStateStorageAccount
+    value: 'stterraformstate001'
+  - name: tfStateContainer
+    value: 'tfstate'
+
+stages:
+  - stage: ApiCleanup
+    displayName: 'Stage 1 - API Cleanup'
+    jobs:
+      - job: DeletePraItems
+        displayName: 'Cleanup tagged PRA objects'
+        pool:
+          vmImage: windows-latest
+        steps:
+          - checkout: self
+
+          - task: PowerShell@2
+            displayName: 'Cleanup PRA items by run tag'
+            inputs:
+              filePath: 'scripts/pra_api/cleanup_jump_items.ps1'
+              pwsh: true
+              arguments: >-
+                -RunId "${{ parameters.runId }}"
+            env:
+              PRA_BASE_URL: $(praBaseUrl)
+              PRA_CLIENT_ID: $(praClientId)
+              PRA_CLIENT_SECRET: $(praClientSecret)
+
+  - stage: TerraformDestroy
+    displayName: 'Stage 2 - Terraform Destroy'
+    dependsOn: ApiCleanup
+    jobs:
+      - job: DestroyInfrastructure
+        displayName: 'Destroy PRA lab infrastructure'
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+
+          - task: TerraformInstaller@1
+            displayName: 'Install Terraform'
+            inputs:
+              terraformVersion: '1.7.5'
+
+          - task: AzureCLI@2
+            displayName: 'Terraform destroy - Windows module'
+            inputs:
+              azureSubscription: '$(azureServiceConnection)'
+              scriptType: bash
+              scriptLocation: inlineScript
+              addSpnToEnvironment: true
+              inlineScript: |
+                set -euo pipefail
+                export ARM_CLIENT_ID="$servicePrincipalId"
+                export ARM_CLIENT_SECRET="$servicePrincipalKey"
+                export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
+                export ARM_TENANT_ID="$tenantId"
+
+                cd Terraform_templates/WindowsVMs_with_PublicIP
+
+                terraform init \
+                  -backend-config="resource_group_name=$(tfStateResourceGroup)" \
+                  -backend-config="storage_account_name=$(tfStateStorageAccount)" \
+                  -backend-config="container_name=$(tfStateContainer)" \
+                  -backend-config="key=windows-${{ parameters.runId }}.tfstate"
+
+                terraform workspace select "${{ parameters.runId }}" || terraform workspace new "${{ parameters.runId }}"
+
+                terraform destroy -auto-approve \
+                  -var "run_id=${{ parameters.runId }}" \
+                  -var "admin_username=LocalAdmin"
+
+          - task: AzureCLI@2
+            displayName: 'Terraform destroy - Linux module'
+            inputs:
+              azureSubscription: '$(azureServiceConnection)'
+              scriptType: bash
+              scriptLocation: inlineScript
+              addSpnToEnvironment: true
+              inlineScript: |
+                set -euo pipefail
+                export ARM_CLIENT_ID="$servicePrincipalId"
+                export ARM_CLIENT_SECRET="$servicePrincipalKey"
+                export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
+                export ARM_TENANT_ID="$tenantId"
+
+                cd Terraform_templates/LinuxVMs_with_PublicIP
+
+                terraform init \
+                  -backend-config="resource_group_name=$(tfStateResourceGroup)" \
+                  -backend-config="storage_account_name=$(tfStateStorageAccount)" \
+                  -backend-config="container_name=$(tfStateContainer)" \
+                  -backend-config="key=linux-${{ parameters.runId }}.tfstate"
+
+                terraform workspace select "${{ parameters.runId }}" || terraform workspace new "${{ parameters.runId }}"
+
+                terraform destroy -auto-approve \
+                  -var "run_id=${{ parameters.runId }}" \
+                  -var "admin_username=LocalAdmin"
