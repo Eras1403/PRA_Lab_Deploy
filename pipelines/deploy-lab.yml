@@ -4,33 +4,39 @@ pr: none
 name: deploy-$(Date:yyyyMMdd)$(Rev:.r)
 
 parameters:
-  - name: windows_jump_client_count
-    displayName: Number of Windows Jump Clients
-    type: number
-    default: 1
-  - name: rhel_9_4_count
-    displayName: Number of RHEL 9.4 Jump Clients
-    type: number
-    default: 0
-  - name: suse_15_count
-    displayName: Number of SUSE 15 Jump Clients
-    type: number
-    default: 0
-  - name: ubuntu_24_04_count
-    displayName: Number of Ubuntu 24.04 Jump Clients
-    type: number
-    default: 1
-  - name: debian_12_count
-    displayName: Number of Debian 12 Jump Clients
-    type: number
-    default: 0
-  - name: fedora_40_count
-    displayName: Number of Fedora 40 Jump Clients
-    type: number
-    default: 0
+  - name: deployment_matrix
+    displayName: Deployment Matrix (server definitions)
+    type: object
+    default:
+      - name_prefix: win-jump-client
+        count: 1
+        os: windows
+        role: jump-client
+        distro: null
+        install_client: true
+        as_jumpoint: false
+        create_shortcut: true
+        protocol: rdp
+      - name_prefix: ubuntu-jump-client
+        count: 1
+        os: linux
+        role: jump-client
+        distro: ubuntu-24.04
+        install_client: true
+        as_jumpoint: false
+        create_shortcut: true
+        protocol: ssh
+      - name_prefix: jumpoint
+        count: 1
+        os: windows
+        role: jumpoint
+        distro: null
+        install_client: false
+        as_jumpoint: true
+        create_shortcut: false
+        protocol: null
 
 variables:
-  # Consider moving these variables into a Library Variable Group.
   - name: azureServiceConnection
     value: 'sc-azure-lab-deploy'
   - name: tfStateResourceGroup
@@ -60,18 +66,13 @@ stages:
           - checkout: self
           - task: PowerShell@2
             name: GenerateManifest
-            displayName: 'Generate manifest based on runtime parameters'
+            displayName: 'Generate manifest based on deployment matrix'
             inputs:
               filePath: 'scripts/pra_api/generate_manifest.ps1'
               pwsh: true
               arguments: >-
                 -RunId "$(runId)"
-                -WindowsJumpClientCount ${{ parameters.windows_jump_client_count }}
-                -RhelCount ${{ parameters.rhel_9_4_count }}
-                -SuseCount ${{ parameters.suse_15_count }}
-                -UbuntuCount ${{ parameters.ubuntu_24_04_count }}
-                -DebianCount ${{ parameters.debian_12_count }}
-                -FedoraCount ${{ parameters.fedora_40_count }}
+                -DeploymentMatrixJson '${{ convertToJson(parameters.deployment_matrix) }}'
                 -OutputPath "$(Build.ArtifactStagingDirectory)/manifest.json"
 
           - publish: '$(Build.ArtifactStagingDirectory)/manifest.json'
@@ -98,7 +99,6 @@ stages:
             inputs:
               terraformVersion: '1.7.5'
 
-          # Secrets are pulled from Key Vault so credentials are never hard-coded in YAML.
           - task: AzureKeyVault@2
             displayName: 'Load deployment secrets from Key Vault'
             inputs:
@@ -121,6 +121,9 @@ stages:
                 export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
                 export ARM_TENANT_ID="$tenantId"
 
+                WINDOWS_CLIENT_COUNT=$(python3 -c "import json; matrix=json.loads('''${{ convertToJson(parameters.deployment_matrix) }}'''); print(sum(int(i.get('count',0)) for i in matrix if str(i.get('os','')).lower()=='windows' and i.get('install_client') is True))")
+
+
                 cd Terraform_templates/WindowsVMs_with_PublicIP
 
                 terraform init \
@@ -133,7 +136,7 @@ stages:
 
                 terraform apply -auto-approve \
                   -var "run_id=$RUN_ID" \
-                  -var "jump_client_count=${{ parameters.windows_jump_client_count }}" \
+                  -var "jump_client_count=$WINDOWS_CLIENT_COUNT" \
                   -var "admin_username=LocalAdmin" \
                   -var "vnet_resource_group=$(vnetResourceGroup)" \
                   -var "vnet_name=$(vnetName)"
@@ -155,6 +158,9 @@ stages:
                 export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
                 export ARM_TENANT_ID="$tenantId"
 
+                read -r LINUX_CLIENT_COUNT LINUX_DISTRO < <(python3 -c "import json; matrix=json.loads('''${{ convertToJson(parameters.deployment_matrix) }}'''); linux=[i for i in matrix if str(i.get('os','')).lower()=='linux' and i.get('install_client') is True and int(i.get('count',0))>0]; count=sum(int(i.get('count',0)) for i in linux); distro=(linux[0].get('distro','ubuntu-24.04') if linux else 'ubuntu-24.04'); print(count, distro)")
+
+
                 cd Terraform_templates/LinuxVMs_with_PublicIP
 
                 terraform init \
@@ -167,8 +173,8 @@ stages:
 
                 terraform apply -auto-approve \
                   -var "run_id=$RUN_ID" \
-                  -var "jump_client_count=$((${{ parameters.rhel_9_4_count }} + ${{ parameters.suse_15_count }} + ${{ parameters.ubuntu_24_04_count }} + ${{ parameters.debian_12_count }} + ${{ parameters.fedora_40_count }}))" \
-                  -var "linux_distro=ubuntu-24.04" \
+                  -var "jump_client_count=$LINUX_CLIENT_COUNT" \
+                  -var "linux_distro=$LINUX_DISTRO" \
                   -var "admin_username=LocalAdmin" \
                   -var "vnet_resource_group=$(vnetResourceGroup)" \
                   -var "vnet_name=$(vnetName)"
