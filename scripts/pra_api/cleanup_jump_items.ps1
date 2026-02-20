@@ -16,8 +16,41 @@ function Get-PraAccessToken {
     $tokenUri = "$BaseUrl/oauth2/token"
     Write-Host "Requesting OAuth token from $tokenUri"
 
-    # Simulated OAuth token request.
-    return "simulated-token-$([guid]::NewGuid())"
+    $body = @{
+        grant_type    = 'client_credentials'
+        client_id     = $ClientId
+        client_secret = $ClientSecret
+    }
+
+    $response = Invoke-RestMethod -Method Post -Uri $tokenUri -Body $body -ContentType 'application/x-www-form-urlencoded'
+
+    if (-not $response.access_token) {
+        throw 'PRA token response did not include access_token.'
+    }
+
+    return $response.access_token
+}
+
+function Get-PraObjectsByType {
+    param(
+        [Parameter(Mandatory = $true)][string]$BaseUrl,
+        [Parameter(Mandatory = $true)][string]$Token,
+        [Parameter(Mandatory = $true)][string]$Tag,
+        [Parameter(Mandatory = $true)][string]$ObjectType
+    )
+
+    $encodedFilter = [System.Uri]::EscapeDataString("tag:$Tag")
+    $uri = "$BaseUrl/api/config/v1/$ObjectType?filter=$encodedFilter"
+
+    Write-Host "[Cleanup] Querying $ObjectType with tag '$Tag' via $uri"
+
+    $headers = @{ Authorization = "Bearer $Token" }
+    $response = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers
+
+    if ($null -eq $response) { return @() }
+    if ($response -is [System.Array]) { return $response }
+    if ($response.items) { return @($response.items) }
+    return @($response)
 }
 
 function Remove-PraObjectsByType {
@@ -28,26 +61,30 @@ function Remove-PraObjectsByType {
         [Parameter(Mandatory = $true)][string]$ObjectType
     )
 
-    $listUri = "$BaseUrl/api/config/v1/$ObjectType?filter=tag:$Tag"
-    Write-Host "[Cleanup] Querying $ObjectType with tag '$Tag' via $listUri"
+    $objects = Get-PraObjectsByType -BaseUrl $BaseUrl -Token $Token -Tag $Tag -ObjectType $ObjectType
 
-    # Simulated results. Replace with real GET/DELETE calls during production integration.
-    $simulatedObjects = @(
-        [PSCustomObject]@{ id = "$ObjectType-001"; name = "$ObjectType-for-$Tag" },
-        [PSCustomObject]@{ id = "$ObjectType-002"; name = "$ObjectType-backup-$Tag" }
-    )
+    foreach ($obj in $objects) {
+        if (-not $obj.id) {
+            Write-Warning "[Cleanup] Skipping $ObjectType object without id."
+            continue
+        }
 
-    foreach ($obj in $simulatedObjects) {
         $deleteUri = "$BaseUrl/api/config/v1/$ObjectType/$($obj.id)"
         Write-Host "[Cleanup] Deleting $ObjectType '$($obj.name)' ($($obj.id)) via $deleteUri"
+
+        Invoke-RestMethod -Method Delete -Uri $deleteUri -Headers @{ Authorization = "Bearer $Token" }
     }
 
-    Write-Host "[Cleanup] $ObjectType cleanup complete. Removed $($simulatedObjects.Count) object(s)."
+    Write-Host "[Cleanup] $ObjectType cleanup complete. Removed $($objects.Count) object(s)."
 }
 
-$baseUrl = if ($env:PRA_BASE_URL) { $env:PRA_BASE_URL } else { 'https://pa-test.trivadis.com' }
-$clientId = if ($env:PRA_CLIENT_ID) { $env:PRA_CLIENT_ID } else { 'simulated-client-id' }
-$clientSecret = if ($env:PRA_CLIENT_SECRET) { $env:PRA_CLIENT_SECRET } else { 'simulated-client-secret' }
+$baseUrl = $env:PRA_BASE_URL
+$clientId = $env:PRA_CLIENT_ID
+$clientSecret = $env:PRA_CLIENT_SECRET
+
+if (-not $baseUrl -or -not $clientId -or -not $clientSecret) {
+    throw 'PRA_BASE_URL, PRA_CLIENT_ID and PRA_CLIENT_SECRET environment variables are required.'
+}
 
 $tag = "run:$RunId"
 $token = Get-PraAccessToken -BaseUrl $baseUrl -ClientId $clientId -ClientSecret $clientSecret

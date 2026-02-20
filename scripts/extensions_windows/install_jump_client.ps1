@@ -34,27 +34,66 @@ function Test-PraConnectivity {
     throw "[Connectivity] Unable to reach $Uri after $MaxAttempts attempts."
 }
 
-Write-Host "Preparing BeyondTrust Jump Client setup for RunId=$RunId, JumpGroup=$JumpGroup"
+function Wait-ServiceRunning {
+    param(
+        [Parameter(Mandatory = $true)][string[]]$ServiceNames,
+        [int]$MaxAttempts = 12,
+        [int]$DelaySeconds = 5
+    )
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        foreach ($name in $ServiceNames) {
+            $service = Get-Service -Name $name -ErrorAction SilentlyContinue
+            if ($service -and $service.Status -eq 'Running') {
+                Write-Host "[Validation] Service '$name' is running."
+                return $true
+            }
+        }
+
+        Write-Host "[Validation] Waiting for Jump Client service to start (attempt $attempt/$MaxAttempts)."
+        Start-Sleep -Seconds $DelaySeconds
+    }
+
+    return $false
+}
+
+Write-Host "Installing BeyondTrust Jump Client for RunId=$RunId, JumpGroup=$JumpGroup"
 Test-PraConnectivity
 
 $installRoot = 'C:\ProgramData\BeyondTrust\LabBootstrap'
 $logPath = Join-Path $installRoot 'jump-client-install.log'
-$cmdPath = Join-Path $installRoot 'install_jump_client.cmd'
+$installerPath = Join-Path (Get-Location) 'BeyondTrustJumpClient.msi'
 
 New-Item -Path $installRoot -ItemType Directory -Force | Out-Null
 
-# Simulate/preset silent installer command used by CSE.
-$installerCommand = @(
-    'msiexec /i BeyondTrustJumpClient.msi /qn /norestart',
+if (-not (Test-Path $installerPath)) {
+    throw "[Install] Installer not found at $installerPath"
+}
+
+$msiLogPath = Join-Path $installRoot 'jump-client-msiexec.log'
+$arguments = @(
+    '/i', "`"$installerPath`"",
+    '/qn', '/norestart',
     "RUN_ID=$RunId",
     "JUMP_GROUP=$JumpGroup",
     'INSTALL_SCOPE=machine',
-    'LOG_VERBOSITY=verbose'
-) -join ' '
+    '/l*v', "`"$msiLogPath`""
+)
 
-Set-Content -Path $cmdPath -Value $installerCommand -Encoding ASCII
+Write-Host '[Install] Running msiexec for Jump Client...'
+$process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $arguments -Wait -PassThru
+if ($process.ExitCode -ne 0) {
+    throw "[Install] msiexec failed with exit code $($process.ExitCode). See $msiLogPath"
+}
 
-"$(Get-Date -Format o) Prepared Jump Client silent installation command: $installerCommand" |
+"$(Get-Date -Format o) Executed msiexec with arguments: $($arguments -join ' ')" |
     Tee-Object -FilePath $logPath -Append
 
-Write-Host "Jump Client preparation completed. Command file: $cmdPath"
+$serviceCandidates = @('bomgar-jump-client', 'BeyondTrust Jump Client', 'bomgar-scc')
+if (-not (Wait-ServiceRunning -ServiceNames $serviceCandidates)) {
+    Get-Service | Where-Object { $_.Name -match 'bomgar|beyondtrust|jump' -or $_.DisplayName -match 'bomgar|beyondtrust|jump' } |
+        Format-Table -AutoSize | Out-String | Tee-Object -FilePath $logPath -Append | Write-Host
+    throw "[Validation] Jump Client service did not reach Running state."
+}
+
+Write-Host "Jump Client installation completed successfully."
